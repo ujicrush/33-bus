@@ -31,7 +31,6 @@ def Allocation(iter, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, lambda_2
     constraints.append(C_rate * Cap_U >= Rating_U)
 
     # Benders decompositions 
-    #bdcut = [] # benders cut update
     bdcut2 = [] 
     for k in range(iter):
         bdcut2.append(alpha >= obj_2nd[k] + cp.sum(lambda_2nd[:,:,k],axis=1).T@(Rating_U - previous_rating[:,k]) + cp.sum(mu_2nd[:,:,k],axis=1).T@(Cap_U - previous_cap[:, k]))
@@ -49,9 +48,10 @@ def Allocation(iter, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, lambda_2
 
     return problem.value, Investment, U.value, Rating_U.value, Cap_U.value, alpha.value
 
-
-def Allocation_2D(iter, NP, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, lambda_2nd, mu_2nd, previous_rating, previous_cap, Fixed_cost, Power_rating_cost, Energy_capacity_cost,C_rate=1):
-    # Used when there are multiple number of scenarios
+# Used when there are multiple number of scenarios
+def Allocation_2D(
+        iter, NP, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, lambda_2nd, mu_2nd, 
+        previous_rating, previous_cap, Fixed_cost, Power_rating_cost, Energy_capacity_cost, C_rate=1):
 
     # Unfolding data:
     R_min = R_bounds[0]
@@ -60,7 +60,7 @@ def Allocation_2D(iter, NP, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, l
     C_max = C_bounds[1]
 
     # Adding variables for MILP
-    U = cp.Variable((N_Bus),boolean=True) # Location for ESS solutions
+    U = cp.Variable((N_Bus), boolean=True) # Location for ESS solutions
     Cap_U = cp.Variable(N_Bus)  # Continuous variable representing the maximum energy storage capacity at each node.
     Rating_U = cp.Variable(N_Bus)  # Continuous variable representing the maximum energy storage rating at each node.
     alpha = cp.Variable() # using for benders decomposition
@@ -72,28 +72,43 @@ def Allocation_2D(iter, NP, N_Bus, ESS_candidate, R_bounds, C_bounds, obj_2nd, l
     # Constraints: 
     constraints = []
     # Physical limits on power and capacity
-    constraints += [Rating_U >= cp.multiply(R_min,U), Rating_U <= cp.multiply(R_max,U)] # Constraint rating to max and min values
-    constraints += [Cap_U >= cp.multiply(C_min,U), Cap_U <= cp.multiply(C_max,U)] # Constraint capacity to max and min values
+    constraints += [Rating_U >= cp.multiply(R_min, U), Rating_U <= cp.multiply(R_max, U)] # Constraint rating to max and min values
+    constraints += [Cap_U >= cp.multiply(C_min, U), Cap_U <= cp.multiply(C_max, U)] # Constraint capacity to max and min values
     constraints.append(cp.multiply(non_candidate,U) == np.zeros(N_Bus))
     constraints.append(C_rate * Cap_U >= Rating_U)
 
     # Benders decompositions 
-    bdcut = [] # benders cut update
-    bdcut2 = [] 
+    bdcut = []  # Multi-cut
+    bdcut2 = []  # Single-cut
+
     for k in range(iter):
         for sc in range(NP):
-            bdcut.append(alpha >= obj_2nd[sc,k] + cp.sum(lambda_2nd[sc,:,:,k],axis=1)@(Rating_U - previous_rating[:,k]) + cp.sum(mu_2nd[sc,:,:,k],axis=1)@(Cap_U-previous_cap[:,k])) #Benders cut constraints
-        bdcut2.append(alpha >= cp.sum(obj_2nd[:,k]) + np.sum(np.sum(lambda_2nd[:,:,:,k],axis=2),axis=0).T@(Rating_U - previous_rating[:,k]) + np.sum(np.sum(mu_2nd[:,:,:,k],axis=2),axis=0).T@(Cap_U - previous_cap[:, k]))
+            bdcut.append(alpha >= obj_2nd[sc, k] + 
+                        cp.sum(lambda_2nd[sc, :, :, k], axis=1) @ (Rating_U - previous_rating[:, k]) + 
+                        cp.sum(mu_2nd[sc, :, :, k], axis=1) @ (Cap_U - previous_cap[:, k]))
 
-    constraints += bdcut2 + [alpha >=0] + bdcut
+        bdcut2.append(alpha >= cp.sum(obj_2nd[:, k]) + 
+                    np.sum(np.sum(lambda_2nd[:, :, :, k], axis=2), axis=0).T @ (Rating_U - previous_rating[:, k]) + 
+                    np.sum(np.sum(mu_2nd[:, :, :, k], axis=2), axis=0).T @ (Cap_U - previous_cap[:, k]))
+
+    constraints += bdcut2 + [alpha >= 0] + bdcut
 
     # Objective function
-    objective = cp.multiply(Fixed_cost, cp.sum(U)) + (cp.multiply(Power_rating_cost,cp.sum(Rating_U)) + cp.multiply(Energy_capacity_cost,cp.sum(Cap_U))) + alpha
-    
+    objective = (
+        cp.multiply(Fixed_cost, cp.sum(U)) + 
+        cp.multiply(Power_rating_cost, cp.sum(Rating_U)) + 
+        cp.multiply(Energy_capacity_cost, cp.sum(Cap_U)) + 
+        alpha
+    )
+
     # Solve
     problem = cp.Problem(cp.Minimize(objective), constraints)
     problem.solve(solver=cp.MOSEK)
 
-    Investment = Fixed_cost*np.sum(U.value) + (Power_rating_cost*np.sum(Rating_U.value)+Energy_capacity_cost*np.sum(Cap_U.value))
+    Investment = (
+        Fixed_cost * np.sum(U.value) + 
+        Power_rating_cost * np.sum(Rating_U.value) + 
+        Energy_capacity_cost * np.sum(Cap_U.value)
+    )
 
     return problem.value, Investment, U.value, Rating_U.value, Cap_U.value, alpha.value

@@ -4,10 +4,8 @@ import math
 import gurobipy
 import mosek
 
-
+# Function used to create incidence matrix 
 def Incidence_matrices(num_nodes, num_lines, sending_end, receiving_end):
-    # Function used to create incidence matrix
-    
     A_plus = np.zeros((num_lines,num_nodes)) # A+ matrix (num_nodes x num_lines)
     for i in range(num_lines):
         A_plus[i,int(sending_end[i])] = 1
@@ -23,8 +21,9 @@ def Incidence_matrices(num_nodes, num_lines, sending_end, receiving_end):
 
     return A_plus, A_minus
 
+
 def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, receiving_node, IndPV,
-               R_l, X_l, B_l, p_d, q_d, pn_bound, qn_bound, v_bound, G_n, B_n, K_l, quad_cost, lin_cost, const_cost,
+               R_l, X_l, B_l, Pd, Qd, pn_bound, qn_bound, v_bound, G_n, B_n, K_l, quad_cost, lin_cost, const_cost,
                ESS_soc0, ESS_cha_bound, ESS_dis_bound, ESS_soc_bound, 
                theta_n_min=-1, theta_n_max=-1, theta_l_min=-1, theta_l_max=-1, eta_dis = 1, eta_cha = 1):
 
@@ -36,12 +35,10 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     # NT : size(1) : Number of time steps
     # num_nodes : size(1) : Number of buses in the grid (NB)
     # num_lines : size(1) : Number of lines in the grid (NL)
-
     # Yp : size(1) : Planning period
     # sending_node : size(NB) : array with the sending node with number from 0 to N_bus-1 for line l 
     # sending_node : size(NL) : array with the receiving node with number from 0 to N_bus-1 for line l
     # IndPV : Indexes of PV : List where are the PV
-
     """All values in p.u. except the cost functions [CHF/MW]"""
     # quad_cost : Quadratic cost coefficient
     # lin_cost : Linear cost coefficient
@@ -59,11 +56,10 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     # theta_n, theta_l : size(NB or NL,NT) : angles on buses and lines
     # ESS_soc, ESS_cha, ESS_dis, q_ESS : size(NB,NT) : ESS operation variables 
     # lambda_, mu_ : size(NB,NT) : Dual values of ESS constraints on rating and capacity
-
     ######################################################
+    
     """Initialisation"""
-
-    A_plus, A_minus = Incidence_matrices(num_nodes,num_lines,sending_node,receiving_node)
+    A_plus, A_minus = Incidence_matrices(num_nodes, num_lines, sending_node, receiving_node)
 
     # Unfolding nodes data
     p_n_min = pn_bound[0]  # Minimum active power generation at each node
@@ -80,16 +76,16 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     ESS_soc_max = ESS_soc_bound[1] # Maximum state of charge at each node
 
     # theta_n min and max
-    if theta_n_min == -1 : theta_n_min = -np.pi/2*np.ones((num_nodes,NT))  # Minimum bus angle 
-    if theta_n_max == -1 : theta_n_max = np.pi/2*np.ones((num_nodes,NT))  # Maximum bus angle
+    if theta_n_min == -1 : theta_n_min = - np.pi / 2 * np.ones((num_nodes,NT))  # Minimum bus angle 
+    if theta_n_max == -1 : theta_n_max = np.pi / 2 * np.ones((num_nodes,NT))  # Maximum bus angle
 
     # theta_l min and max
-    if theta_l_min == -1 : theta_l_min = -np.pi/2*np.ones((num_lines,NT))  # Minimum line angle (from relaxation assumption)
-    if theta_l_max == -1 : theta_l_max = np.pi/2*np.ones((num_lines,NT))  # Maximum line angle (from relaxation assumption)
+    if theta_l_min == -1 : theta_l_min = - np.pi / 2 * np.ones((num_lines,NT))  # Minimum line angle (from relaxation assumption)
+    if theta_l_max == -1 : theta_l_max = np.pi / 2 * np.ones((num_lines,NT))  # Maximum line angle (from relaxation assumption)
 
     # for q_ESS
-    lin=2 # from data
-    xx=np.linspace(0, 1/2*np.pi, lin+1)
+    lin = 2 # from data
+    xx = np.linspace(0, 1/2 * np.pi, lin + 1)
     slope = np.zeros(lin)
     offset = np.zeros(lin)
     for i in range(lin):
@@ -98,8 +94,8 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
 
     ######################################################
     """Variables"""
-
     p_n = cp.Variable((num_nodes,NT))  # Active power at node n
+    # p_curtailment = cp.Variable((num_nodes, NT), nonneg=True)
     q_n = cp.Variable((num_nodes,NT))  # Reactive power at node n
     V_n = cp.Variable((num_nodes,NT))  # Voltage magnitude squared at node n
     theta_n = cp.Variable((num_nodes,NT))  # Voltage angles at node n
@@ -148,6 +144,11 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     for time in range(NT):
         if len(IndPV[time])>0:
             constraints.append(p_n[IndPV[time],:] == p_n_max[IndPV[time],:]) # enforces the power injection to be equal to PV production
+            # 添加新的变量p_curtailment，obj里再加上价格*p_curtailment
+    # for time in range(NT):
+    #     if len(IndPV[time]) > 0:
+    #         # p_n + p_curtailment = p_n_max
+    #         constraints.append(p_n[IndPV[time], :] + p_curtailment[IndPV[time], :] == p_n_max[IndPV[time], :])
 
     # Reactive power bounds (1o)
     constraints.append(q_n >= q_n_min)
@@ -188,10 +189,10 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
         constraints.append(q_ESS >= -slope[i] * (ESS_cha - ESS_dis) - offset[i] * Rmax)
 
     # Active Power Balance (1b)
-    constraints.append(p_n + ESS_dis - p_d - ESS_cha == A_plus @ p_sl - A_minus @ p_ol + cp.multiply(G_n, V_n))
+    constraints.append(p_n + ESS_dis - Pd - ESS_cha == A_plus @ p_sl - A_minus @ p_ol + cp.multiply(G_n, V_n))
 
     # Reactive Power Balance (1c)
-    constraints.append(q_n - q_ESS - q_d == A_plus @ q_sl - A_minus @ q_ol - cp.multiply(B_n, V_n))
+    constraints.append(q_n - q_ESS - Qd == A_plus @ q_sl - A_minus @ q_ol - cp.multiply(B_n, V_n))
 
     ### line constraints ###
 
@@ -238,6 +239,16 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     objective = cp.Minimize(Yp*365*(cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) + cp.multiply(lin_cost, p_n * baseMVA) + const_cost)) 
                             + Yp*2910*cp.sum(ESS_cha+ESS_dis)*baseMVA
                             + cp.sum(p_ol)*100*365*baseMVA*Yp)
+    
+    # curtailment_cost = 50  # 削减功率成本 (CHF/MWh)
+    # objective = cp.Minimize(
+    #     Yp * 365 * (cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) 
+    #                     + cp.multiply(lin_cost, p_n * baseMVA) 
+    #                     + const_cost)) 
+    #     + Yp * 2910 * cp.sum(ESS_cha + ESS_dis) * baseMVA
+    #     + cp.sum(p_ol) * 100 * 365 * baseMVA * Yp
+    #     + cp.sum(p_curtailment * baseMVA) * curtailment_cost * Yp * 365
+    # )
 
     # Defining the optimization problem
     problem = cp.Problem(objective, constraints)
