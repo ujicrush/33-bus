@@ -95,11 +95,10 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     ######################################################
     """Variables"""
     p_n = cp.Variable((num_nodes,NT))  # Active power at node n
-    # p_curtailment = cp.Variable((num_nodes, NT), nonneg=True)
+    p_curtailment = cp.Variable((num_nodes, NT), nonneg=True)
     q_n = cp.Variable((num_nodes,NT))  # Reactive power at node n
-    V_n = cp.Variable((num_nodes,NT))  # Voltage magnitude squared at node n
+    V_n = cp.Variable((num_nodes, NT))  # Voltage magnitude squared at node n
     theta_n = cp.Variable((num_nodes,NT))  # Voltage angles at node n
-
     p_sl = cp.Variable((num_lines,NT))  # Active power at sending end of line l
     q_sl = cp.Variable((num_lines,NT))  # Reactive power at sending end of line l
     p_ol = cp.Variable((num_lines,NT))  # Active power losses on line l
@@ -141,14 +140,15 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     # Active power bounds (1n)
     constraints.append(p_n >= p_n_min)
     constraints.append(p_n <= p_n_max)
-    for time in range(NT):
-        if len(IndPV[time])>0:
-            constraints.append(p_n[IndPV[time],:] == p_n_max[IndPV[time],:]) # enforces the power injection to be equal to PV production
-            # 添加新的变量p_curtailment，obj里再加上价格*p_curtailment
+
     # for time in range(NT):
-    #     if len(IndPV[time]) > 0:
-    #         # p_n + p_curtailment = p_n_max
-    #         constraints.append(p_n[IndPV[time], :] + p_curtailment[IndPV[time], :] == p_n_max[IndPV[time], :])
+    #     if len(IndPV[time])>0:
+    #         constraints.append(p_n[IndPV[time],:] == p_n_max[IndPV[time],:]) # enforces the power injection to be equal to PV production
+
+    for time in range(NT):
+        if len(IndPV[time]) > 0:
+            # p_n + p_curtailment = p_n_max
+            constraints.append(p_n[IndPV[time], :] + p_curtailment[IndPV[time], :] == p_n_max[IndPV[time], :])
 
     # Reactive power bounds (1o)
     constraints.append(q_n >= q_n_min)
@@ -175,7 +175,7 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
 
     # Initializing ESS SOC for the first time step
     constraints.append(ESS_soc[:, 0] == ESS_soc0)
-    #constraints.append(ESS_soc[:,-1] == ESS_soc0)
+    constraints.append(ESS_soc[:,-1] == ESS_soc0)
     constraints.append(cp.sum(ESS_cha,axis=1) == cp.sum(ESS_dis,axis=1))
 
     # Battery aging constraints --> battery has to do at maximum 1.1 cycles per day
@@ -230,25 +230,31 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
             )
 
             # Feasibility solution recovery equation (4g):
-            constraints.append(V_n[sending_node[l],time] + V_n[receiving_node[l],time] >= cp.norm(cp.vstack([2*theta_l[l,time]/np.sin(theta_l_max[l,time]), V_n[sending_node[l],time] - V_n[receiving_node[l],time]]),2))
+            constraints.append(
+                V_n[sending_node[l],time] + V_n[receiving_node[l],time] >= cp.norm(
+                    cp.vstack([
+                        2*theta_l[l,time]/np.sin(theta_l_max[l,time]), 
+                        V_n[sending_node[l],time] - V_n[receiving_node[l],time]
+                    ]), 2)
+            )
     
 
     #####################################################################
     """Objective Function""" 
     # Minimize total generation cost by using quadratic relationship
-    objective = cp.Minimize(Yp*365*(cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) + cp.multiply(lin_cost, p_n * baseMVA) + const_cost)) 
-                            + Yp*2910*cp.sum(ESS_cha+ESS_dis)*baseMVA
-                            + cp.sum(p_ol)*100*365*baseMVA*Yp)
+    # objective = cp.Minimize(Yp*365*(cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) + cp.multiply(lin_cost, p_n * baseMVA) + const_cost)) 
+    #                         + Yp*2910*cp.sum(ESS_cha+ESS_dis)*baseMVA
+    #                         + cp.sum(p_ol)*100*365*baseMVA*Yp)
     
-    # curtailment_cost = 50  # 削减功率成本 (CHF/MWh)
-    # objective = cp.Minimize(
-    #     Yp * 365 * (cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) 
-    #                     + cp.multiply(lin_cost, p_n * baseMVA) 
-    #                     + const_cost)) 
-    #     + Yp * 2910 * cp.sum(ESS_cha + ESS_dis) * baseMVA
-    #     + cp.sum(p_ol) * 100 * 365 * baseMVA * Yp
-    #     + cp.sum(p_curtailment * baseMVA) * curtailment_cost * Yp * 365
-    # )
+    curtailment_cost = 26
+    objective = cp.Minimize(
+        Yp * 365 * (cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) 
+                        + cp.multiply(lin_cost, p_n * baseMVA) 
+                       + const_cost)) 
+        + Yp * 2910 * cp.sum(ESS_cha + ESS_dis) * baseMVA
+        + cp.sum(p_ol) * 100 * 365 * baseMVA * Yp
+        + cp.sum(p_curtailment * baseMVA) * curtailment_cost * Yp * 365
+    )
 
     # Defining the optimization problem
     problem = cp.Problem(objective, constraints)
