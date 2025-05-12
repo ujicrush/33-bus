@@ -133,15 +133,19 @@ if __name__=="__main__":
     b_PV = np.zeros((N_bus, NT))
     c_PV = np.zeros((N_bus, NT))
 
-    for sc in scenario_data.Scenario.unique():
-        for time in scenario_data[scenario_data.Scenario == sc].Time.unique():
+    for sc in range(1, NP + 1):
+        for time in range(1, NT + 1):
             mask = (scenario_data.Scenario == sc) & (scenario_data.Time == time)
-            df = scenario_data[mask]
+            intermediate_df = pd.merge(
+                scenario_data[mask][["Grid_node", "Pd", "Qd", "PV"]],
+                pd.DataFrame({"Grid_node": np.arange(1, N_bus + 1)}),
+                on="Grid_node",
+                how="right"
+            ).fillna(0)
 
-            Pd[sc-1, df.Grid_node-1, time-1] = df.Pd.to_numpy() / 1000 / baseMVA  # kW to p.u.
-            Qd[sc-1, df.Grid_node-1, time-1] = df.Qd.to_numpy() / 1000 / baseMVA  # kW to p.u.
-
-            Pn_solar_bound[sc-1, 1, df.Grid_node-1, time-1] = df.PV.to_numpy() / 1000 / baseMVA  # kW to p.u.
+            Pd[sc-1, :, time-1] = intermediate_df.Pd.to_numpy() / 1000 / baseMVA  # kW to p.u.
+            Qd[sc-1, :, time-1] = intermediate_df.Qd.to_numpy() / 1000 / baseMVA  # kW to p.u.
+            Pn_solar_bound[sc-1, 1, :, time-1] = intermediate_df.PV.to_numpy() / 1000 / baseMVA  # kW to p.u.
 
     a_PV[:] = quad_cost_PV
     b_PV[:] = lin_cost_PV
@@ -177,8 +181,28 @@ if __name__=="__main__":
     # qn_bound = qn_bound.T[:, :, np.newaxis] * np.ones((1, N_bus, NT))
 
     # if no generator, only contains PV bound
-    pn_bound = Pn_solar_bound
-    qn_bound = np.zeros((2, N_bus, NT)) 
+    pn_bound = np.zeros((N_bus, 2))
+    qn_bound = np.zeros((N_bus, 2)) 
+
+    slack_Pmax = 1e4  # choose a large headroom in MW
+    slack_Pmin = -1e4
+    slack_Qmax = 1e4
+    slack_Qmin = -1e4
+    
+    pn_bound[index_slack, 0] = slack_Pmin / baseMVA
+    pn_bound[index_slack, 1] = slack_Pmax / baseMVA
+    qn_bound[index_slack, 0] = slack_Qmin / baseMVA
+    qn_bound[index_slack, 1] = slack_Qmax / baseMVA
+
+    pn_static = pn_bound.T[np.newaxis, :, :, np.newaxis]  # (1,2,N_bus,1)
+    qn_static = qn_bound.T[:, :, np.newaxis]  # (2,N_bus,1)
+
+    # 2) Broadcast to (NP,2,N_bus,NT)
+    pn_bound = pn_static * np.ones((NP, 2, N_bus, NT))
+
+    # 3) Finally add the PV bounds
+    pn_bound += Pn_solar_bound  # both are now (NP,2,N_bus,NT)
+    qn_bound = qn_static * np.ones((2, N_bus, NT))
 
     # related to branch data
     # sending_node = branch_data["F_BUS"].map(bus_name_to_bus_index).to_numpy().astype(int)
@@ -217,7 +241,7 @@ if __name__=="__main__":
     Energy_capacity_cost = 30000e3      # CHF/p.u. 
 
     ################################################################# MILP
-    Yp=10
+    Yp = 10
 
     obj_2nd = np.zeros((NP,lim_iter)) # objective function result from the 2nd step (SOC-ACOPF) 
     lambda_2nd = np.zeros((NP,N_bus,NT,lim_iter)) # dual variable lambda result from the 2nd step (SOC-ACOPF) 
