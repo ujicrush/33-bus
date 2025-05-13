@@ -63,7 +63,7 @@ def Allocation_2D(
     U = cp.Variable((N_Bus), boolean=True) # Location for ESS solutions
     Cap_U = cp.Variable(N_Bus)  # Continuous variable representing the maximum energy storage capacity at each node.
     Rating_U = cp.Variable(N_Bus)  # Continuous variable representing the maximum energy storage rating at each node.
-    alpha = cp.Variable() # using for benders decomposition
+    alpha = cp.Variable(NP) # using for benders decomposition
 
     #Values that need to be calculated
     non_candidate = np.ones(N_Bus)
@@ -80,11 +80,13 @@ def Allocation_2D(
     # Benders decompositions 
     bdcut = []  # Multi-cut
 
-    for k in range(iter):
-        for sc in range(NP):
-            bdcut.append(alpha >= obj_2nd[sc, k] + 
-                        cp.sum(lambda_2nd[sc, :, :, k], axis=1) @ (Rating_U - previous_rating[:, k]) + 
-                        cp.sum(mu_2nd[sc, :, :, k], axis=1) @ (Cap_U - previous_cap[:, k]))
+    for sc in range(NP):
+        for k in range(iter):
+            bdcut.append(
+                alpha[sc] >= obj_2nd[sc, k] 
+                + ((Rating_U - previous_rating[:, k]) @ cp.sum(lambda_2nd[sc, :, :, k], axis=1)) 
+                + ((Cap_U - previous_cap[:, k]) @ cp.sum(mu_2nd[sc, :, :, k], axis=1))
+            )
 
     constraints += bdcut + [alpha >= 0]
 
@@ -93,7 +95,7 @@ def Allocation_2D(
         cp.multiply(Fixed_cost, cp.sum(U)) + 
         cp.multiply(Power_rating_cost, cp.sum(Rating_U)) + 
         cp.multiply(Energy_capacity_cost, cp.sum(Cap_U)) + 
-        alpha
+        cp.sum(alpha)
     )
 
     # Solve

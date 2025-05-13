@@ -249,7 +249,7 @@ if __name__=="__main__":
     previous_rating = np.zeros((N_bus,lim_iter)) # saved rating value from iter = iter-1
     previous_cap = np.zeros((N_bus,lim_iter)) # saved capacity value from iter = iter-1
     ESS_loc = np.zeros((N_bus,lim_iter))
-    alpha_store = np.zeros(lim_iter)
+    alpha_store = np.zeros((NP, lim_iter))
     upperB_save = np.zeros(lim_iter)
     lowerB_save = np.zeros(lim_iter)
     fairness_price = np.zeros(lim_iter)
@@ -261,7 +261,7 @@ if __name__=="__main__":
 
     while ((iter < lim_iter) & (convergence==0)):
         # master problem solving...
-        obj_MP, invest_save[iter], ESS_loc[:,iter], Max_rating, Max_capacity, alpha_store[iter] = Allocation_2D(
+        obj_MP, invest_save[iter], ESS_loc[:,iter], Max_rating, Max_capacity, alpha_store[:, iter] = Allocation_2D(
             iter, NP, N_bus, ESS_candidate, R_bounds, C_bounds, 
             obj_2nd, lambda_2nd, mu_2nd, 
             previous_rating, previous_cap, 
@@ -340,7 +340,7 @@ if __name__=="__main__":
     np.save(res_path+'/previous_rating.npy', previous_rating[:,:iter])
     np.save(res_path+'/previous_cap.npy', previous_cap[:,:iter])
     np.save(res_path+'/ESS_loc.npy', ESS_loc[:,:iter])
-    np.save(res_path+'/alpha_store.npy', alpha_store[:iter])
+    np.save(res_path+'/alpha_store.npy', alpha_store[:,:iter])
     np.save(res_path+'/upperB_save.npy', upperB_save[:iter])
     np.save(res_path+'/lowerB_save.npy', lowerB_save[:iter])
     np.save(res_path+'/invest_save.npy', invest_save[:iter])
