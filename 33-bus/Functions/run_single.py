@@ -40,7 +40,7 @@ def compute_SOC_ACOPF(sc, NT, baseMVA, N_bus, N_line, Yp, sending_node, receivin
 if __name__=="__main__":
 
     ################################################################ Parameters
-    ESS_candidate = np.array([9, 25]) #Candidates nodes 随便选2个点，只要不是slack bus都行
+    ESS_candidate = np.array([8, 18, 25, 33]) #Candidates nodes
     num_processes = 4 # Number of processes to use (adjust based on your CPUs and memory)
     lim_iter = 100 # Max number of iteration of benders decompositions
     datapath = "Data/" # Change as a function of the loaded folder
