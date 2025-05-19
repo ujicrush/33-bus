@@ -96,6 +96,9 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     """Variables"""
     p_n = cp.Variable((num_nodes,NT))  # Active power at node n
     p_curtailment = cp.Variable((num_nodes, NT), nonneg=True)
+    p_slack = p_n[0, :]
+    p_imp = cp.pos(p_slack)
+    p_exp = cp.pos(-p_slack)
     q_n = cp.Variable((num_nodes,NT))  # Reactive power at node n
     V_n = cp.Variable((num_nodes, NT))  # Voltage magnitude squared at node n
     theta_n = cp.Variable((num_nodes,NT))  # Voltage angles at node n
@@ -253,6 +256,8 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
                        + const_cost)) 
         + Yp * 2910 * cp.sum(ESS_cha + ESS_dis) * baseMVA
         + cp.sum(p_ol) * 100 * 365 * baseMVA * Yp
+        + cp.sum(p_imp) * 200 *365 *baseMVA * Yp
+        + cp.sum(p_exp) * 100 *365 *baseMVA * Yp
         + cp.sum(p_curtailment * baseMVA) * curtailment_cost * Yp * 365
     )
 
