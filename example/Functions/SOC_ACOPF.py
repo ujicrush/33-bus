@@ -254,9 +254,6 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
     # Solve the problem
     problem.solve(solver=cp.MOSEK)
 
-    print("p_ol min:", np.min(p_ol.value), "max:", np.max(p_ol.value))
-    print("q_ol min:", np.min(q_ol.value), "max:", np.max(q_ol.value))
-
     # Dual values :
     lambda_ = constraint_rating.dual_value # Dual value for the constraint related to ESS maximal rating
     mu_ = constraint_capacity.dual_value # Dual value for the constraint related to ESS maximal capacity

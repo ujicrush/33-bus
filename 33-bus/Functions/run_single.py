@@ -59,7 +59,7 @@ if __name__=="__main__":
     # bus_data = bus_data.reset_index().rename(columns = {"index":"grid_node"})
 
     branch_data = pd.read_csv(datapath+"branch_data.csv")
-    # generator_data = pd.read_csv(datapath+"632_0_generator_data.csv")
+    generator_data = pd.read_csv(datapath+"generator_data.csv")
 
     # stat_scenario = pd.read_csv(datapath+"Chaudron_scenarios.csv",delimiter=";")
     # freq_scenario = stat_scenario.dp.to_numpy() / stat_scenario.dp.sum()
@@ -93,7 +93,7 @@ if __name__=="__main__":
 
     # Power cost
     # index_slack = (bus_data[bus_data.BUS_TYPE==3].grid_node).to_list()[0]
-    index_slack = bus_data.loc[bus_data.BUS_TYPE == 3, "Grid_node"].values[0]
+    index_slack = [0]
     a_slack = np.zeros(N_bus)
     a_slack[index_slack] = 0
     a_slack = a_slack[:, np.newaxis] * np.ones((1, NT))
@@ -129,6 +129,7 @@ if __name__=="__main__":
     Pd = np.zeros((NP, N_bus, NT))
     Qd = np.zeros((NP, N_bus, NT))
     Pn_solar_bound = np.zeros((NP, 2, N_bus, NT))
+    index_PV = [16, 31]
     a_PV = np.zeros((N_bus, NT))
     b_PV = np.zeros((N_bus, NT))
     c_PV = np.zeros((N_bus, NT))
@@ -145,11 +146,12 @@ if __name__=="__main__":
 
             Pd[sc-1, :, time-1] = intermediate_df.Pd.to_numpy() / 1000 / baseMVA  # kW to p.u.
             Qd[sc-1, :, time-1] = intermediate_df.Qd.to_numpy() / 1000 / baseMVA  # kW to p.u.
+            Pn_solar_bound[sc-1, 0, :, time-1] = 0
             Pn_solar_bound[sc-1, 1, :, time-1] = intermediate_df.PV.to_numpy() / 1000 / baseMVA  # kW to p.u.
 
-    a_PV[:] = quad_cost_PV
-    b_PV[:] = lin_cost_PV
-    c_PV[:] = const_cost_PV
+    a_PV[index_PV, :] = quad_cost_PV
+    b_PV[index_PV, :] = lin_cost_PV
+    c_PV[index_PV, :] = const_cost_PV
 
     # expanding dataset for all other data that is not time or scenario dependant
     V_base = bus_data.baseKV.max()  # 12.66 kV
@@ -194,6 +196,23 @@ if __name__=="__main__":
     qn_bound[index_slack, 0] = slack_Qmin / baseMVA
     qn_bound[index_slack, 1] = slack_Qmax / baseMVA
 
+    index_gen = (generator_data["GEN_BUS"].astype(int) - 1).values
+    # generator_data["bus_index"] = index_gen
+    a_gen = np.zeros(N_bus)
+    a_gen[index_gen] = [0.12, 0.09]
+    a_gen = a_gen[:, np.newaxis] * np.ones((1, NT))
+    b_gen = np.zeros(N_bus)
+    b_gen[index_gen] = [20, 15]
+    b_gen = b_gen[:, np.newaxis] * np.ones((1, NT))
+    c_gen = np.zeros(N_bus)
+    c_gen[index_gen] = [0, 0]
+    c_gen = c_gen[:, np.newaxis] * np.ones((1, NT))
+
+    pn_bound[index_gen, 0] = generator_data["P_min"].values / baseMVA
+    pn_bound[index_gen, 1] = generator_data["P_max"].values / baseMVA
+    qn_bound[index_gen, 0] = generator_data["Q_min"].values / baseMVA
+    qn_bound[index_gen, 1] = generator_data["Q_max"].values / baseMVA
+
     pn_static = pn_bound.T[np.newaxis, :, :, np.newaxis]  # (1,2,N_bus,1)
     qn_static = qn_bound.T[:, :, np.newaxis]  # (2,N_bus,1)
 
@@ -225,9 +244,9 @@ if __name__=="__main__":
     ESS_candidate -= 1
 
     # summing all cost
-    a = a_slack + a_PV
-    b = b_slack + b_PV
-    c = c_slack + c_PV
+    a = a_slack + a_PV + a_gen
+    b = b_slack + b_PV + b_gen
+    c = c_slack + c_PV + c_gen
 
     ###################################################################### Allocations constaints
     R_min = 0.05 / baseMVA * np.ones(N_bus)

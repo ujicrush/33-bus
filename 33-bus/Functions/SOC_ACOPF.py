@@ -244,19 +244,15 @@ def SOC_ACOPF_2D_alocation(baseMVA, NT, num_nodes, num_lines, Yp, sending_node, 
 
     #####################################################################
     """Objective Function""" 
-    # Minimize total generation cost by using quadratic relationship
-    # objective = cp.Minimize(Yp*365*(cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) + cp.multiply(lin_cost, p_n * baseMVA) + const_cost)) 
-    #                         + Yp*2910*cp.sum(ESS_cha+ESS_dis)*baseMVA
-    #                         + cp.sum(p_ol)*100*365*baseMVA*Yp)
-    
     curtailment_cost = 26
+    price_imp = [620, 620, 620, 620, 620, 620, 620, 890, 890, 890, 890, 890, 890, 890, 890, 890, 890, 890, 890, 890, 890, 620, 620, 620]
     objective = cp.Minimize(
         Yp * 365 * (cp.sum(cp.multiply(quad_cost, cp.square(p_n * baseMVA)) 
                         + cp.multiply(lin_cost, p_n * baseMVA) 
                        + const_cost)) 
         + Yp * 2910 * cp.sum(ESS_cha + ESS_dis) * baseMVA
         + cp.sum(p_ol) * 100 * 365 * baseMVA * Yp
-        + cp.sum(p_imp) * 200 *365 *baseMVA * Yp
+        + cp.sum(cp.multiply(p_imp, price_imp)) * 365 * baseMVA * Yp
         + cp.sum(p_exp) * 100 *365 *baseMVA * Yp
         + cp.sum(p_curtailment * baseMVA) * curtailment_cost * Yp * 365
     )
